@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="16119" systemVersion="19E266" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="Workout" representedClassName=".Workout" syncable="YES" codeGenerationType="category">
+        <attribute name="ck_databaseScope" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES" preserveAfterDeletion="YES"/>
+        <attribute name="ck_ownerName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
+        <attribute name="ck_recordName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
+        <attribute name="ck_systemFields" optional="YES" attributeType="Binary"/>
+        <attribute name="ck_zoneName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO" preserveAfterDeletion="YES"/>
+        <attribute name="start" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="workoutExercises" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="WorkoutExercise" inverseName="workout" inverseEntity="WorkoutExercise"/>
+    </entity>
+    <entity name="WorkoutExercise" representedClassName=".WorkoutExercise" syncable="YES" codeGenerationType="category">
+        <attribute name="ck_databaseScope" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES" preserveAfterDeletion="YES"/>
+        <attribute name="ck_ownerName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
+        <attribute name="ck_recordName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
+        <attribute name="ck_systemFields" optional="YES" attributeType="Binary"/>
+        <attribute name="ck_zoneName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO" preserveAfterDeletion="YES"/>
+        <attribute name="orderIndex" attributeType="Integer 64" usesScalarValueType="YES"/>
+        <relationship name="workout" maxCount="1" deletionRule="Nullify" destinationEntity="Workout" inverseName="workoutExercises" inverseEntity="Workout"/>
+    </entity>
+    <elements>
+        <element name="Workout" positionX="47.6953125" positionY="189.4609375" width="128" height="163"/>
+        <element name="WorkoutExercise" positionX="270" positionY="207" width="128" height="163"/>
+    </elements>
+</model>
