@@ -29,7 +29,11 @@ public class PullManager {
     
     private var pullResults = [RecordDescription : RecordPullResult]()
     
-    var recordErrors: [RecordDescription : Error] {
+    var errors: [Error] {
+        Array(recordErrors.values) + Array(zoneErrors.values) + (databaseError.map { [$0] } ?? [])
+    }
+    
+    private var recordErrors: [RecordDescription : Error] {
         pullResults.compactMapValues {
             if case .error(let error) = $0 {
                 return error
@@ -37,12 +41,12 @@ public class PullManager {
             return nil
         }
     }
+    private var zoneErrors = [CKRecordZone.ID : Error]()
+    private var databaseError: Error? = nil
     
     static let failedRecordsStorageKey = "failedRecords"
     
     @Stored private(set) var failedRecords: Set<RecordDescription>
-    
-    private(set) var zoneDeletionErrors = [CKRecordZone.ID : Error]()
     
     private var syncableObjectRecordMap = [NSManagedObjectID : RecordDescription]() // used to get record descriptions for invalid objects
     private var syncableObjectsWithMissingRelationshipTargets = [CKRecordZone.ID : [(SyncableObject, Record)]]()
@@ -151,32 +155,33 @@ extension PullManager {
         }
     }
     
-    func save() throws -> Bool {
-        #warning("TODO: IMPORTANT: PROPERLY HANDLE ZONE DELETIONS")
-        return try context.performAndWait {
+    func save() throws {
+        try context.performAndWait {
             let invalidObjects = try self.context.saveNonAtomic()
-            if !invalidObjects.isEmpty {
-                os_log("Could not save %d objects", log: .sync, type: .error, invalidObjects.count)
-            }
+            if !invalidObjects.isEmpty { os_log("Could not save %d objects", log: .sync, type: .error, invalidObjects.count) }
             self.updatePullResults(with: invalidObjects)
             try self.saveUnmergedRecordDescriptions()
-            return invalidObjects.isEmpty
         }
     }
     
     private func updatePullResults(with invalidObjects: Set<NSManagedObject>) {
         for invalidObject in invalidObjects {
             guard let syncableObject = invalidObject as? SyncableObject else {
-                #warning("TODO: expose validation errors in public variable, so that it can later be returned in the completion handler")
                 assertionFailure("Object is not a SyncableObject objectID=\(invalidObject.objectID)")
                 continue
             }
-            guard let recordDescription = self.syncableObjectRecordMap[syncableObject.objectID] else {
-                #warning("TODO: expose validation errors in public variable, so that it can later be returned in the completion handler")
+            
+            let fallbackRecordDescription = { () -> RecordDescription? in
+                guard let record = syncableObject.emptyRecord() else { return nil }
+                return RecordDescription(from: Record(record: record, databaseScope: self.databaseScope))
+            }
+            
+            guard let recordDescription = self.syncableObjectRecordMap[syncableObject.objectID] ?? fallbackRecordDescription() else {
                 assertionFailure("Could not find RecordDescription for object objectID=\(syncableObject.objectID)")
                 continue
             }
-            let result = syncableObject.handleValidationError(for: recordDescription.recordID)
+            
+            let result = syncableObject.handleValidationError()
             switch result {
             case .merged:
                 break
@@ -185,7 +190,6 @@ extension PullManager {
             case .unmerged, .error:
                 break
             }
-            
             self.pullResults[recordDescription] = result
         }
     }
@@ -209,25 +213,34 @@ extension PullManager {
 }
 
 extension PullManager {
-    #warning("TODO: IMPORTANT: PROPERLY HANDLE ZONE DELETIONS")
     func delete(with zoneID: CKRecordZone.ID) {
         context.performAndWait {
-            do {
-                var errors = [Error]()
-                for registeredType in registeredTypes {
-                    do {
-                        try registeredType.delete(with: zoneID, in: context)
-                    } catch {
-                        errors.append(error)
-                    }
+            for registeredType in registeredTypes {
+                do {
+                    try registeredType.delete(with: zoneID, in: context)
+                } catch {
+                    zoneErrors[zoneID] = PullError.couldNotDeleteRecordZone(zoneID: zoneID)
                 }
-                if !errors.isEmpty {
-                    throw NSError(domain: String(describing: Self.self), code: 1, userInfo: ["detailedErrors" : errors])
-                }
-            } catch {
-                zoneDeletionErrors[zoneID] = error
             }
         }
+    }
+    
+    func delete(with databaseScope: CKDatabase.Scope) {
+        context.performAndWait { [self] in
+            for registeredType in registeredTypes {
+                do {
+                    try registeredType.delete(with: databaseScope, in: context)
+                } catch {
+                    databaseError = PullError.couldNotDeleteDatabase
+                }
+            }
+        }
+    }
+}
+
+extension PullManager {
+    func hasErrors(for zoneID: CKRecordZone.ID) -> Bool {
+        databaseError != nil || zoneErrors[zoneID] != nil || recordErrors.contains(where: { $0.key.recordID.recordID.zoneID == zoneID })
     }
 }
 

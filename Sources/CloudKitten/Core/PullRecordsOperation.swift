@@ -85,7 +85,7 @@ extension PullRecordsOperation {
                 }
             }
             
-            self.pullRecordssCompletionBlock?(self.pullManager.recordErrors.values + self.errors)
+            self.pullRecordssCompletionBlock?(self.pullManager.errors + self.errors)
         }
         
         operation.database = database

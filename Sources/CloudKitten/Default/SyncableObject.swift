@@ -20,7 +20,7 @@ public protocol SyncableObject: NSManagedObject, RecordIDConvertible {
     func update(with record: Record) -> RecordPullResult
     
     func handleMissingRelationshipTargets(for record: Record) -> RecordPullResult
-    func handleValidationError(for recordID: RecordID) -> RecordPullResult
+    func handleValidationError() -> RecordPullResult
     
     static func updateSystemFields(with record: Record, context: NSManagedObjectContext) throws
     func setSystemFieldsRecord(_ record: CKRecord)
@@ -28,6 +28,7 @@ public protocol SyncableObject: NSManagedObject, RecordIDConvertible {
     // Pull Manager
     static func delete(with recordID: RecordID, in context: NSManagedObjectContext) -> (RecordPullResult, Self?)
     static func delete(with zoneID: CKRecordZone.ID, in context: NSManagedObjectContext) throws
+    static func delete(with databaseScope: CKDatabase.Scope, in context: NSManagedObjectContext) throws
     
     // Push Manager
     func createRecord() -> CKRecord?
@@ -125,11 +126,19 @@ public extension SyncableObject {
         }
     }
     
+    static func delete(with databaseScope: CKDatabase.Scope, in context: NSManagedObjectContext) throws {
+        let request: NSFetchRequest<Self> = NSFetchRequest(entityName: entity().name!)
+        request.returnsObjectsAsFaults = false // better performance since we will fire all faults
+        for object in try context.fetch(request) where object.recordID?.databaseScope == databaseScope {
+            context.delete(object)
+        }
+    }
+    
     func handleMissingRelationshipTargets(`for` record: Record) -> RecordPullResult {
         .unmerged
     }
     
-    func handleValidationError(`for` recordID: RecordID) -> RecordPullResult {
+    func handleValidationError() -> RecordPullResult {
         .unmerged
     }
     

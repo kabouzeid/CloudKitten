@@ -46,7 +46,7 @@ class PullRecordZoneChangesOperation: Operation {
         queue.addOperation(makeFetchRecordZoneChangesOperation(database: database, zoneIDs: zoneIDs))
         queue.waitUntilAllOperationsAreFinished()
         
-        self.pullRecordZoneChangesCompletionBlock?(self.pullManager.recordErrors.values + self.errors)
+        self.pullRecordZoneChangesCompletionBlock?(self.pullManager.errors + self.errors)
     }
 }
 
@@ -91,7 +91,7 @@ extension PullRecordZoneChangesOperation {
                 os_log("Trying to save context", log: .sync)
                 try self.pullManager.save()
                 
-                if !self.pullManager.recordErrors.contains(where: { $0.key.recordID.recordID.zoneID == zoneID }) {
+                if !self.pullManager.hasErrors(for: zoneID) {
                     os_log("Updating record zone change token for zoneID=%@ token=%@", log: .sync, type: .debug, zoneID, token ?? "nil")
                     self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]][zoneID] = token
                 } else {
@@ -127,22 +127,19 @@ extension PullRecordZoneChangesOperation {
                         
                         do {
                             os_log("Trying to save context", log: .sync)
-                            if try self.pullManager.save() {
-                                if !self.pullManager.recordErrors.contains(where: { $0.key.recordID.recordID.zoneID == zoneID }) {
-                                    if self.database.databaseScope == .private && deleted {
-                                        self.customZones.zoneIDs.remove(zoneID)
-                                    }
-                                    os_log("Resetting record zone change token for zoneID=%@", log: .sync, type: .debug, zoneID)
-                                    self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]][zoneID] = nil
-                                    if recreated {
-                                        self.queue.addOperation(self.makeFetchRecordZoneChangesOperation(database: database, zoneIDs: [zoneID]))
-                                    }
-                                } else {
-                                    os_log("Will not update record zone change token for zoneID=%@", log: .sync, type: .info, zoneID)
+                            try self.pullManager.save()
+                            if !self.pullManager.hasErrors(for: zoneID) {
+                                if deleted && self.database.databaseScope == .private {
+                                    self.customZones.zoneIDs.remove(zoneID)
+                                }
+                                os_log("Resetting record zone change token for zoneID=%@", log: .sync, type: .debug, zoneID)
+                                self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]][zoneID] = nil
+                                if recreated {
+                                    self.queue.addOperation(self.makeFetchRecordZoneChangesOperation(database: database, zoneIDs: [zoneID]))
                                 }
                             } else {
-                                os_log("Could not save some objects. Will not update database change token.", log: .sync, type: .error)
-                                self.errors.append(NSError(domain: String(describing: Self.self), code: 0, userInfo: [NSLocalizedDescriptionKey : "Could not save some objects. Will not update database change token."]))
+                                os_log("Will not update record zone change token for zoneID=%@", log: .sync, type: .info, zoneID)
+                                self.errors.append(PullError.couldNotSaveAllObjects)
                             }
                         } catch {
                             os_log("Could not save pull manager: %@", log: .sync, type: .error, error.localizedDescription)
@@ -162,7 +159,7 @@ extension PullRecordZoneChangesOperation {
                 os_log("Trying to save context", log: .sync)
                 try self.pullManager.save()
                 
-                if (error == nil && !self.pullManager.recordErrors.contains(where: { $0.key.recordID.recordID.zoneID == zoneID })) {
+                if (error == nil && !self.pullManager.hasErrors(for: zoneID)) {
                     os_log("Updating record zone change token for zoneID=%@ token=%@", log: .sync, type: .debug, zoneID, token ?? "nil")
                     self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]][zoneID] = token
                 } else {

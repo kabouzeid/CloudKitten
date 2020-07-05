@@ -280,19 +280,19 @@ struct DetailView: View {
         .navigationBarItems(trailing: HStack(spacing: 16) {
             // hack: wrap with Image for proper sizing
             Image(systemName: "person").hidden().background(
-                UIKitCloudKitSharingButton(workout: self.workout)
+                WorkoutCloudKitSharingButton(workout: self.workout)
             )
             EditButton()
         })
     }
 }
 
-struct UIKitCloudKitSharingButton: UIViewRepresentable {
+struct WorkoutCloudKitSharingButton: UIViewRepresentable {
     typealias UIViewType = UIButton
 
     let workout: Workout
 
-    func makeUIView(context: UIViewRepresentableContext<UIKitCloudKitSharingButton>) -> UIButton {
+    func makeUIView(context: UIViewRepresentableContext<WorkoutCloudKitSharingButton>) -> UIButton {
         let button = UIButton()
         updateUIView(button, context: context)
         button.addTarget(context.coordinator, action: #selector(context.coordinator.pressed(_:)), for: .touchUpInside)
@@ -301,7 +301,7 @@ struct UIKitCloudKitSharingButton: UIViewRepresentable {
         return button
     }
 
-    func updateUIView(_ button: UIButton, context: UIViewRepresentableContext<UIKitCloudKitSharingButton>) {
+    func updateUIView(_ button: UIButton, context: UIViewRepresentableContext<WorkoutCloudKitSharingButton>) {
         switch workout.shareStatus {
         case .none:
             button.titleLabel?.text = "Add People"
@@ -319,9 +319,9 @@ struct UIKitCloudKitSharingButton: UIViewRepresentable {
     class Coordinator: NSObject, UICloudSharingControllerDelegate {
         var button: UIButton?
 
-        var parent: UIKitCloudKitSharingButton
+        var parent: WorkoutCloudKitSharingButton
 
-        init(_ parent: UIKitCloudKitSharingButton) {
+        init(_ parent: WorkoutCloudKitSharingButton) {
             self.parent = parent
         }
 
@@ -380,9 +380,7 @@ struct UIKitCloudKitSharingButton: UIViewRepresentable {
                     let context = self.parent.workout.managedObjectContext!
                     context.performAndWait {
                         for savedRecord in savedRecords ?? [] {
-                            #warning("TODO don't make this specific to Workout")
                             try! Workout.updateSystemFields(with: Record(record: savedRecord, databaseScope: .private), context: context)
-//                            try! WorkoutDataStorage.shared.cloudKitten.syncableObjectBridge.updateSystemFields(with: Record(record: savedRecord, databaseScope: .private), context: context)
                         }
                         context.saveOrCrash()
                     }

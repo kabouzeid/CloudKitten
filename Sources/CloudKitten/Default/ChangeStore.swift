@@ -270,7 +270,7 @@ extension CodingUserInfoKey {
 // MARK: - Store on disk
 extension ChangeStore {
     private static var persistentHistoryTokenKey = "persistentHistoryToken"
-    private var persistentHistoryToken: NSPersistentHistoryToken? {
+    private(set) var persistentHistoryToken: NSPersistentHistoryToken? {
         get {
             guard let data = try! storage.data(forKey: Self.persistentHistoryTokenKey) else { return nil }
             return try! NSKeyedUnarchiver.unarchivedObject(ofClass: NSPersistentHistoryToken.self, from: data)

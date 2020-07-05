@@ -71,43 +71,43 @@ class PullChangesOperation: Operation {
 extension PullChangesOperation {
     private func makeFetchDatabaseChangesOperation(database: CKDatabase) -> CKFetchDatabaseChangesOperation {
         let changeToken = temporaryDatabaseChangeToken ?? tokens.databaseChangeTokens[database.databaseScope]
-        os_log("Current database change token: %@", log: .sync, type: .debug, changeToken ?? "nil")
+        os_log("token=%@", log: .sync, type: .debug, changeToken ?? "nil")
         let operation = CKFetchDatabaseChangesOperation(previousServerChangeToken: changeToken)
         operation.fetchAllChanges = true
 
         operation.recordZoneWithIDChangedBlock = { zoneID in
-            os_log("Record zone with zoneID=%@ changed", log: .sync, type: .info, zoneID)
+            os_log("Record zone changed (zoneID=%@)", log: .sync, type: .info, zoneID)
             self.changedZoneIDs.append(zoneID)
         }
 
         operation.recordZoneWithIDWasDeletedBlock = { zoneID in
-            os_log("Record zone with zoneID=%@ was deleted", log: .sync, type: .info, zoneID)
+            os_log("Record zone was deleted (zoneID=%@)", log: .sync, type: .info, zoneID)
             // Write this zone deletion to memory
             
-            // NOTE: Probably bug in CloudKit (2020-06-08)
+            // NOTE: Probably bug in CloudKit (2020/06/08)
             guard self.deletionAllowed(zoneID: zoneID, for: database.databaseScope) else {
-                os_log("Ignoring (allegedly) deleted record zoneID=%@ from database=%@", log: .sync, type: .error, zoneID, database)
+                os_log("Ignoring (allegedly) deleted record zone (zoneID=%@, databaseScope=%@)", log: .sync, type: .error, zoneID, database.databaseScope.name)
                 return
             }
             
-            self.deletedZoneIDs.append(zoneID)
-            
             self.pullManager.delete(with: zoneID)
+            
+            self.deletedZoneIDs.append(zoneID)
         }
         
         operation.recordZoneWithIDWasPurgedBlock = { zoneID in
-            os_log("Record zone with zoneID=%@ was purged", log: .sync, type: .info, zoneID)
+            os_log("Record zone was purged (zoneID=%@)", log: .sync, type: .info, zoneID)
             // Write this zone purge to memory
             
-            // NOTE: Probably bug in CloudKit (2020-06-08)
+            // NOTE: Probably bug in CloudKit (2020/06/08)
             guard self.deletionAllowed(zoneID: zoneID, for: database.databaseScope) else {
-                os_log("Ignoring (allegedly) purged record zoneID=%@ from database=%@", log: .sync, type: .error, zoneID, database)
+                os_log("Ignoring (allegedly) purged record zone (zoneID=%@, databaseScope=%@)", log: .sync, type: .error, zoneID, database.databaseScope.name)
                 return
             }
             
-            self.deletedZoneIDs.append(zoneID)
-
             self.pullManager.delete(with: zoneID)
+            
+            self.deletedZoneIDs.append(zoneID)
         }
 
         operation.changeTokenUpdatedBlock = { token in
@@ -115,41 +115,26 @@ extension PullChangesOperation {
             // Write this new database change token to memory
             
             do {
-                let success = try self.pullManager.save()
-                
-                if database.databaseScope == .private {
-                    // allow the zones to be recreated again during push
-                    self.customZones.zoneIDs.subtract(self.deletedZoneIDs)
-                }
-                
+                try self.pullManager.save()
+
                 // reset the record zone change tokens, after the zone deletion
                 for zoneID in self.deletedZoneIDs {
+                    guard !self.pullManager.hasErrors(for: zoneID) else {
+                        os_log("Could not save some objects. Will not update database change token.", log: .sync, type: .error)
+                        self.databaseChangeErrors.append(PullError.couldNotSaveAllObjects)
+                        continue
+                    }
+                    
+                    if database.databaseScope == .private {
+                        // allow the zone to be recreated again during push
+                        self.customZones.zoneIDs.remove(zoneID)
+                    }
                     self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]][zoneID] = nil
-                }
-                
-                #warning("TODO: IMPORTANT: PROPERLY HANDLE ZONE DELETIONS")
-                if !success {
-                    os_log("Could not save some objects. Will not update database change token.", log: .sync, type: .error)
-                    self.databaseChangeErrors.append(NSError(domain: String(describing: Self.self), code: 0, userInfo: [NSLocalizedDescriptionKey : "Could not save some objects. Will not update database change token."]))
                 }
             } catch {
                 os_log("Could not save pull manager: %@", log: .sync, type: .error, error.localizedDescription)
                 self.databaseChangeErrors.append(error)
             }
-            
-//            self.context.performAndWait {
-//                do {
-//                    os_log("Trying to partially save context", log: .sync)
-//                    let unsavedObjects = try self.context.saveNonAtomic()
-//                    if !unsavedObjects.isEmpty {
-//                        os_log("Could not save %d objects. Will not update database change token.", log: .sync, type: .error, unsavedObjects.count)
-//                        self.databaseChangeErrors.append(NSError(domain: "FetchDatabaseChangesOperationDomain", code: 0, userInfo: [NSLocalizedDescriptionKey : "Could not save \(unsavedObjects.count) objects. Will not update database change token."]))
-//                    }
-//                } catch {
-//                    os_log("Could not partially save context: %@", log: .sync, type: .error, error.localizedDescription)
-//                    self.databaseChangeErrors.append(error)
-//                }
-//            }
             
             self.temporaryDatabaseChangeToken = token
         }
@@ -163,8 +148,32 @@ extension PullChangesOperation {
                     Thread.sleep(forTimeInterval: retryAfter)
                     self.queue.addOperation(self.makeFetchDatabaseChangesOperation(database: database))
                 } else if (error as? CKError)?.code == .changeTokenExpired {
-                    #warning("TODO: toss local cache and refetch")
-                    self.temporaryDatabaseChangeToken = nil
+                    self.pullManager.delete(with: self.database.databaseScope)
+                    
+                    do {
+                        try self.pullManager.save()
+                        
+                        if self.pullManager.errors.isEmpty {
+                            if database.databaseScope == .private {
+                                // allow the zones to be recreated again during push
+                                self.customZones.zoneIDs = []
+                            }
+                            
+                            // reset the record zone change tokens, after the zone deletion
+                            self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]] = [:]
+
+                            self.temporaryDatabaseChangeToken = nil
+                            self.tokens.databaseChangeTokens[database.databaseScope] = nil
+                            
+                            self.queue.addOperation(self.makeFetchDatabaseChangesOperation(database: database))
+                        } else {
+                            os_log("Could not save some objects. Will not update database change token.", log: .sync, type: .error)
+                            self.databaseChangeErrors.append(PullError.couldNotSaveAllObjects)
+                        }
+                    } catch {
+                        os_log("Could not save pull manager: %@", log: .sync, type: .error, error.localizedDescription)
+                        self.databaseChangeErrors.append(error)
+                    }
                 } else {
                     self.databaseChangeErrors.append(error)
                 }
@@ -175,41 +184,26 @@ extension PullChangesOperation {
             // Write this new database change token to memory
             
             do {
-                let success = try self.pullManager.save()
-                
-                if database.databaseScope == .private {
-                    // allow the zones to be recreated again during push
-                    self.customZones.zoneIDs.subtract(self.deletedZoneIDs)
-                }
-                
+                try self.pullManager.save()
+
                 // reset the record zone change tokens, after the zone deletion
                 for zoneID in self.deletedZoneIDs {
+                    guard !self.pullManager.hasErrors(for: zoneID) else {
+                        os_log("Could not save some objects. Will not update database change token.", log: .sync, type: .error)
+                        self.databaseChangeErrors.append(PullError.couldNotSaveAllObjects)
+                        continue
+                    }
+                    
+                    if database.databaseScope == .private {
+                        // allow the zone to be recreated again during push
+                        self.customZones.zoneIDs.remove(zoneID)
+                    }
                     self.tokens.recordZoneChangeTokens[database.databaseScope, default: [:]][zoneID] = nil
-                }
-                
-                #warning("TODO: IMPORTANT: PROPERLY HANDLE ZONE DELETIONS")
-                if !success {
-                    os_log("Could not save some objects. Will not update database change token.", log: .sync, type: .error)
-                    self.databaseChangeErrors.append(NSError(domain: "FetchDatabaseChangesOperationDomain", code: 0, userInfo: [NSLocalizedDescriptionKey : "Could not save some objects. Will not update database change token."]))
                 }
             } catch {
                 os_log("Could not save pull manager: %@", log: .sync, type: .error, error.localizedDescription)
                 self.databaseChangeErrors.append(error)
             }
-            
-//            self.context.performAndWait {
-//                do {
-//                    os_log("Trying to partially save context", log: .sync)
-//                    let unsavedObjects = try self.context.saveNonAtomic()
-//                    if !unsavedObjects.isEmpty {
-//                        os_log("Could not save %d objects. Will not update database change token.", log: .sync, type: .error, unsavedObjects.count)
-//                        self.databaseChangeErrors.append(NSError(domain: "FetchDatabaseChangesOperationDomain", code: 0, userInfo: [NSLocalizedDescriptionKey : "Could not save \(unsavedObjects.count) objects. Will not update database change token."]))
-//                    }
-//                } catch {
-//                    os_log("Could not partially save context: %@", log: .sync, type: .error, error.localizedDescription)
-//                    self.databaseChangeErrors.append(error)
-//                }
-//            }
             
             self.temporaryDatabaseChangeToken = token
             
@@ -235,7 +229,7 @@ extension PullChangesOperation {
         return operation
     }
     
-    // NOTE: Probably bug in CloudKit (2020-06-08)
+    // NOTE: Probably bug in CloudKit (2020/06/08)
     private func deletionAllowed(zoneID: CKRecordZone.ID, for databaseScope: CKDatabase.Scope) -> Bool {
         switch databaseScope {
         case .private:
@@ -246,6 +240,23 @@ extension PullChangesOperation {
             return true
         @unknown default:
             fatalError()
+        }
+    }
+}
+
+enum PullError: Error {
+    case couldNotSaveAllObjects
+    case couldNotDeleteRecordZone(zoneID: CKRecordZone.ID)
+    case couldNotDeleteDatabase
+    
+    var localizedDescription: String {
+        switch self {
+        case .couldNotSaveAllObjects:
+            return "Could not save all objects"
+        case .couldNotDeleteRecordZone(let zoneID):
+            return "Could not delete record zone (zoneID=\(zoneID)"
+        case .couldNotDeleteDatabase:
+            return "Could not delete database"
         }
     }
 }

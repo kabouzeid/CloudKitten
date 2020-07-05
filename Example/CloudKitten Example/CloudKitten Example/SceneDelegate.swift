@@ -73,7 +73,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             if let error = error {
                 print("accept share error: \(error.localizedDescription)")
             } else {
-                print("accepted share \(share?.recordID)")
+                print("accepted share \(String(describing: share?.recordID))")
             }
         }
         operation.acceptSharesCompletionBlock = { error in
