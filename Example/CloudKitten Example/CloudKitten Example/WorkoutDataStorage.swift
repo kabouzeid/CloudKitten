@@ -56,12 +56,15 @@ public class WorkoutDataStorage {
         cloudKitten.subscribe(to: .private)
         cloudKitten.subscribe(to: .shared)
         
-        cloudKitten.sync(with: .private)
-        cloudKitten.sync(with: .shared)
+        cloudKitten.pull(from: .private)
+        cloudKitten.pull(from: .shared)
         
         // optional
         cloudKitten.pullFailed(from: .private)
         cloudKitten.pullFailed(from: .shared)
+        
+        cloudKitten.push(to: .private)
+        cloudKitten.push(to: .shared)
     }
 }
 
@@ -109,8 +112,8 @@ extension WorkoutDataStorage {
         NotificationCenter.default.publisher(for: .NSPersistentStoreRemoteChange)
             .sink { _ in
                 os_log("Persistent store remote change notification", log: coreDataLog, type: .info)
-                stack.cloudKitten.sync(with: .private)
-                stack.cloudKitten.sync(with: .shared)
+                stack.cloudKitten.push(to: .private)
+                stack.cloudKitten.push(to: .shared)
             }
             .store(in: &stack.subscriptions)
         return stack

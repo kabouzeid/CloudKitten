@@ -29,7 +29,7 @@ public class PullManager {
     
     private var pullResults = [RecordDescription : RecordPullResult]()
     
-    var mergeErrors: [RecordDescription : Error] {
+    var recordErrors: [RecordDescription : Error] {
         pullResults.compactMapValues {
             if case .error(let error) = $0 {
                 return error
@@ -87,7 +87,6 @@ extension PullManager {
                 let result = syncableObject.update(with: record)
                 switch result {
                 case .merged:
-                    context.transactionAuthor = nil
                     syncableObject.setSystemFieldsRecord(record.record)
                 case .missingRelationshipTargets:
                     syncableObjectsWithMissingRelationshipTargets[record.record.recordID.zoneID, default: []].append((syncableObject, record))
@@ -155,7 +154,7 @@ extension PullManager {
     func save() throws -> Bool {
         #warning("TODO: IMPORTANT: PROPERLY HANDLE ZONE DELETIONS")
         return try context.performAndWait {
-            let invalidObjects = try self.context.savePartially()
+            let invalidObjects = try self.context.saveNonAtomic()
             if !invalidObjects.isEmpty {
                 os_log("Could not save %d objects", log: .sync, type: .error, invalidObjects.count)
             }

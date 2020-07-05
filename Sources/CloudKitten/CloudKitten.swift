@@ -67,34 +67,10 @@ extension CloudKitten {
 // MARK: - Public API
 
 extension CloudKitten {
-    public func sync(with databaseScope: CKDatabase.Scope, completion: (([Error]) -> Void)? = nil) {
-        os_log("Enqueuing sync in %@", log: .sync, databaseScope.name)
-        cloudQueue.addOperation {
-            var errors = [Error]()
-            
-            // pull
-            let pullOperation = PullChangesOperation(database: self.database(for: databaseScope), pullManager: self.pullManagerFactory(databaseScope), storage: self.storage)
-            pullOperation.pullChangesCompletionBlock = { errors.append(contentsOf: $0) }
-            pullOperation.main()
-            
-            // push
-            let pushOperation = PushChangesOperation(database: self.database(for: databaseScope), pushManager: self.pushManagerFactory(databaseScope), storage: self.storage)
-            pushOperation.pushCompletionBlock = { errors.append(contentsOf: $0) }
-            pushOperation.main()
-            
-            if errors.isEmpty {
-                os_log("Sync was successful", log: .sync, type: .info)
-            } else {
-                os_log("Sync was not successful, errors=%@", log: .sync, type: .error, errors.map { $0.localizedDescription })
-            }
-            completion?(errors)
-        }
-    }
-    
     public func pull(from databaseScope: CKDatabase.Scope, completion: (([Error]) -> Void)? = nil) {
         os_log("Enqueuing pull from %@", log: .sync, databaseScope.name)
         cloudQueue.addOperation {
-            let operation = PullChangesOperation(database: self.database(for: databaseScope), pullManager: self.pullManagerFactory(databaseScope), storage: self.storage)
+            let operation = PullChangesOperation(database: self.container.database(with: databaseScope), pullManager: self.pullManagerFactory(databaseScope), storage: self.storage)
             operation.pullChangesCompletionBlock = { errors in
                 if errors.isEmpty {
                     os_log("Pull was successful", log: .sync, type: .info)
@@ -111,7 +87,7 @@ extension CloudKitten {
         os_log("Enqueuing pull (failed records) from %@", log: .sync, databaseScope.name)
         cloudQueue.addOperation {
             let pullManager = self.pullManagerFactory(databaseScope)
-            let operation = PullRecordsOperation(database: self.database(for: databaseScope), recordDescriptions: Array(pullManager.failedRecords), pullManager: pullManager)
+            let operation = PullRecordsOperation(database: self.container.database(with: databaseScope), recordDescriptions: Array(pullManager.failedRecords), pullManager: pullManager)
             operation.pullRecordssCompletionBlock = { errors in
                 if errors.isEmpty {
                     os_log("Pull (failed) was successful", log: .sync, type: .info)
@@ -128,7 +104,7 @@ extension CloudKitten {
     public func push(to databaseScope: CKDatabase.Scope, completion: (([Error]) -> Void)? = nil) {
         os_log("Enqueuing push to %@", log: .sync, databaseScope.name)
         cloudQueue.addOperation {
-            let operation = PushChangesOperation(database: self.database(for: databaseScope), pushManager: self.pushManagerFactory(databaseScope), storage: self.storage)
+            let operation = PushChangesOperation(database: self.container.database(with: databaseScope), pushManager: self.pushManagerFactory(databaseScope), storage: self.storage)
             operation.pushCompletionBlock = { errors in
                 if errors.isEmpty {
                     os_log("Push was successful", log: .sync, type: .info)
@@ -144,7 +120,7 @@ extension CloudKitten {
     public func subscribe(to databaseScope: CKDatabase.Scope, completion: ((Error?) -> Void)? = nil) {
         os_log("Enqueuing subscribe to %@", log: .sync, databaseScope.name)
         cloudQueue.addOperation {
-            let operation = SaveDatabaseSubscriptionOperation(database: self.database(for: databaseScope), storage: self.storage)
+            let operation = SaveDatabaseSubscriptionOperation(database: self.container.database(with: databaseScope), storage: self.storage)
             operation.saveCompletionBlock = { error in
                 if let error = error {
                     os_log("Subscribing to database was not successful: %@", log: .sync, type: .error, error.localizedDescription)
@@ -154,21 +130,6 @@ extension CloudKitten {
                 completion?(error)
             }
             operation.main()
-        }
-    }
-}
-
-extension CloudKitten {
-    private func database(for databaseScope: CKDatabase.Scope) -> CKDatabase {
-        switch databaseScope {
-        case .private:
-            return container.privateCloudDatabase
-        case .shared:
-            return container.sharedCloudDatabase
-        case .public:
-            return container.publicCloudDatabase
-        @unknown default:
-            fatalError("Unknown database scope: \(databaseScope)")
         }
     }
 }

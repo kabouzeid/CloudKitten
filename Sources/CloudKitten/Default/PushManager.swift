@@ -73,6 +73,58 @@ extension PushManager {
         (recordsToSave.halfed(), recordIDsToDelete.halfed())
     }
     
+    func resolveConflict(clientRecord: CKRecord, serverRecord: CKRecord, ancestorRecord: CKRecord) {
+        context.performAndWait {
+            let record = Record(record: serverRecord, databaseScope: databaseScope)
+            let (result, syncableObject) = registeredType(for: record.record.recordType)?.merge(record: record, with: changeStore.change(for: record.recordID)?.localChange, context: context) ?? (.unmerged, nil)
+            switch result {
+            case .merged:
+                if let syncableObject = syncableObject {
+                    syncableObject.setSystemFieldsRecord(record.record)
+                }
+            case .missingRelationshipTargets:
+                guard let syncableObject = syncableObject else { fatalError() }
+                switch syncableObject.handleMissingRelationshipTargets(for: record) {
+                case .merged:
+                    syncableObject.setSystemFieldsRecord(record.record)
+                case .missingRelationshipTargets:
+                    fatalError()
+                case .unmerged, .error:
+                    context.refresh(syncableObject, mergeChanges: false)
+                }
+            case .unmerged, .error:
+                if let syncableObject = syncableObject {
+                    context.refresh(syncableObject, mergeChanges: false)
+                }
+            }
+        }
+    }
+    
+    func delete(with zoneID: CKRecordZone.ID) throws {
+        try context.performAndWait {
+            var errors = [Error]()
+            for registeredType in self.registeredTypes {
+                do {
+                    try registeredType.delete(with: zoneID, in: self.context)
+                } catch {
+                    errors.append(error)
+                }
+            }
+            if !errors.isEmpty {
+                throw NSError(domain: String(describing: Self.self), code: 1, userInfo: ["detailedErrors" : errors])
+            }
+        }
+    }
+    
+    func save() throws {
+        try context.performAndWait {
+            let invalidObjects = try self.context.saveNonAtomic()
+            if !invalidObjects.isEmpty {
+                throw NSError(domain: String(describing: Self.self), code: 1, userInfo: [NSLocalizedDescriptionKey : "Not all objects could be saved"])
+            }
+        }
+    }
+    
     func success(savedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID]) {
         let savedRecords = savedRecords.map { Record(record: $0, databaseScope: databaseScope) }
         let deletedRecordIDs = deletedRecordIDs.map { RecordID(recordID: $0, databaseScope: databaseScope) }
@@ -88,7 +140,10 @@ extension PushManager {
                 }
             }
             do {
-                try context.save()
+                let unsaved = try context.saveNonAtomic()
+                if !unsaved.isEmpty {
+                    os_log("Could not save %d objects: %@", log: .sync, type: .error, unsaved.count, unsaved)
+                }
             } catch {
                 os_log("Could not save context: %@", log: .sync, type: .error, error.localizedDescription)
                 // continue though...

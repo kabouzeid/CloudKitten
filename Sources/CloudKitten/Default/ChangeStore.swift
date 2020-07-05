@@ -184,11 +184,12 @@ extension ChangeStore {
                 }
                 
                 guard let recordID = recordID(from: change, context: context) else {
-                    os_log("Found no ID for objectID=%@", log: .sync, type: .debug, change.changedObjectID)
+                    os_log("No recordID for objectID=%@", log: .sync, type: .debug, change.changedObjectID)
                     continue
                 }
                 
                 guard transaction.author.map({ !syncTransactionAuthors.contains($0) }) ?? true else {
+                    os_log("Resetting change from sync transaction author objectID=%@", log: .sync, type: .debug, change.changedObjectID)
                     changesByID[recordID] = nil
                     continue
                 }

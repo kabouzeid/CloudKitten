@@ -24,7 +24,11 @@ class PushChangesOperation: Operation {
         self.database = database
         self.pushManager = pushManager
         self.storage = storage
+        
+        self._customZones = .init(storage: storage, key: CustomZones.storageKey, default: CustomZones(zoneIDs: []))
     }
+    
+    @Stored private var customZones: CustomZones
     
     private let queue: OperationQueue = {
         let queue = OperationQueue()
@@ -46,8 +50,8 @@ class PushChangesOperation: Operation {
         os_log("Pushing %d record(s) to save and %d recordID(s) to delete into database=%@", log: .sync, recordsToSave.count, recordIDsToDelete.count, database.databaseScope.name)
         
         if database.databaseScope == .private {
-            let defaultZone = CKRecordZone.default()
-            let customZoneIDs = Set(recordsToSave.map { $0.recordID.zoneID }.filter { $0 != defaultZone }) // Set for uniqueness
+            let defaultZoneID = CKRecordZone.default().zoneID
+            let customZoneIDs = Set(recordsToSave.map { $0.recordID.zoneID }.filter { $0 != defaultZoneID }) // Set for uniqueness
             queue.addOperation(CreateCustomRecordZonesOperation(database: database, recordZonesToSave: customZoneIDs.map { CKRecordZone(zoneID: $0) }, storage: storage))
         }
         
@@ -79,16 +83,13 @@ extension PushChangesOperation {
                     }
                     if error.code == .partialFailure {
                         self.errors.append(error)
-                        guard let concreteErrors = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID : Error] else {
+                        guard let partialErrors = (error.partialErrorsByItemID as? [CKRecord.ID : Error])?.compactMapValues({ $0 as? CKError }) else {
                             fatalError("Partial failure did not contain partial errors: \(error)")
                         }
-                        os_log("Could not modify records (partial failure): %@, errors=%@", log: .sync, type: .error, error.localizedDescription, concreteErrors.values.map { $0.localizedDescription } )
-                        let batchRequestFailedRecordIDs = concreteErrors.filter { ($0.value as? CKError)?.code == .batchRequestFailed }.map { $0.key }
-                        os_log("%d record(s)/recordID(s) can be retried", log: .sync, type: .debug, batchRequestFailedRecordIDs.count)
-                        let recordsToSaveAgain = recordsToSave.filter { batchRequestFailedRecordIDs.contains($0.recordID) }
-                        let recordsToDeleteAgain = recordIDsToDelete.filter { batchRequestFailedRecordIDs.contains($0) }
-                        os_log("Will retry to push %d/%d record(s) to save and %d/%d recordID(s) to delete", log: .sync, recordsToSaveAgain.count, recordsToSave.count, recordsToDeleteAgain.count, recordIDsToDelete.count)
-                        self.queue.addOperation(self.makeModifyRecordsOperation(recordsToSave: recordsToSaveAgain, recordIDsToDelete: recordsToDeleteAgain))
+                        os_log("Could not modify records (partial failure): %@, errors=%@", log: .sync, type: .error, error.localizedDescription, partialErrors.values.map { $0.localizedDescription } )
+                        self.handleZoneDeleted(errors: partialErrors)
+                        self.handleServerRecordChanged(errors: partialErrors)
+                        self.handleBatchRequestFailed(recordsToSave: recordsToSave, recordIDsToDelete: recordIDsToDelete, errors: partialErrors)
                         return
                     }
                 }
@@ -105,5 +106,67 @@ extension PushChangesOperation {
         operation.qualityOfService = .userInitiated
         operation.database = database
         return operation
+    }
+    
+    private func handleZoneDeleted(errors: [CKRecord.ID : CKError]) {
+        let errors = errors.filter { [.zoneNotFound, .userDeletedZone].contains($0.value.code) } // can .userDeletedZone even happen here?
+        let zoneIDs = Set(errors.map { $0.key.zoneID })
+        for zoneID in zoneIDs {
+            if self.database.databaseScope == .private {
+                // make sure we only delete a zone locally if we assumed that it already existed
+                // otherwise the zone should've been created at the beginning of the operation but something did go wrong...
+                guard self.customZones.zoneIDs.contains(zoneID) else { return }
+            }
+            
+            var success = true
+            
+            do {
+                os_log("Deleting zone (zoneID=%@)", log: .sync, zoneID)
+                try pushManager.delete(with: zoneID)
+            } catch {
+                os_log("Could not delete zone (zoneID=%@): %@", log: .sync, type: .error, zoneID, error.localizedDescription)
+                success = false
+            }
+            
+            do {
+                os_log("Saving zone deletion (zoneID=%@)", log: .sync, zoneID)
+                try self.pushManager.save()
+            } catch {
+                os_log("Could not save zone deletion (zone=%@): %@", log: .sync, type: .error, zoneID, error.localizedDescription)
+                success = false
+            }
+            
+            if self.database.databaseScope == .private {
+                if success {
+                    // we only want to allow to create this zone again after we successfully deleted the zone locally
+                    customZones.zoneIDs.remove(zoneID)
+                } else {
+                    os_log("Will not remove zone from custom zones (zone=%@)", log: .sync, type: .info, zoneID)
+                }
+            }
+        }
+    }
+    
+    private func handleServerRecordChanged(errors: [CKRecord.ID : CKError]) {
+        let errors = errors.filter { $0.value.code == .serverRecordChanged }
+        for error in errors {
+            self.pushManager.resolveConflict(clientRecord: error.value.clientRecord!, serverRecord: error.value.serverRecord!, ancestorRecord: error.value.ancestorRecord!)
+        }
+        do {
+            try self.pushManager.save()
+        } catch {
+            os_log("Could not save resolved conflicts", log: .sync, type: .error)
+        }
+    }
+    
+    private func handleBatchRequestFailed(recordsToSave: [CKRecord], recordIDsToDelete: [CKRecord.ID], errors: [CKRecord.ID : CKError]) {
+        let errors = errors.filter { $0.value.code == .batchRequestFailed }
+        guard !errors.isEmpty else { return }
+        os_log("%d record(s)/recordID(s) can be retried", log: .sync, type: .debug, errors.count)
+        let recordsToSaveAgain = recordsToSave.filter { errors.keys.contains($0.recordID) }
+        let recordsToDeleteAgain = recordIDsToDelete.filter { errors.keys.contains($0) }
+        guard !(recordsToSaveAgain.isEmpty && recordsToDeleteAgain.isEmpty) else { return }
+        os_log("Will retry to push %d/%d record(s) to save and %d/%d recordID(s) to delete", log: .sync, recordsToSaveAgain.count, recordsToSave.count, recordsToDeleteAgain.count, recordIDsToDelete.count)
+        self.queue.addOperation(self.makeModifyRecordsOperation(recordsToSave: recordsToSaveAgain, recordIDsToDelete: recordsToDeleteAgain))
     }
 }

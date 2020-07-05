@@ -1,5 +1,5 @@
 //
-//  NSManagedObjectContext+savePartially.swift
+//  NSManagedObjectContext+saveNonAtomic.swift
 //  CloudMagic
 //
 //  Created by Karim Abou Zeid on 22.04.20.
@@ -13,7 +13,7 @@ extension NSManagedObjectContext {
     /// Recursively refreshes managed objects with validation errors and to try to save the other managed objects.
     /// - Throws: Rethrows the error of `save()` if the save did not fail because of a validation error.
     /// - Returns: The managed objects that could not be saved due to validation errors.
-    func savePartially() throws -> Set<NSManagedObject> {
+    func saveNonAtomic() throws -> Set<NSManagedObject> {
         try _saveNonAtomic(unsavedObjects: [])
     }
     
