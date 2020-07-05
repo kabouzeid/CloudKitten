@@ -8,14 +8,30 @@
 
 import UIKit
 import CloudKitten
+import Combine
 import os.log
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
+    var subscription: AnyCancellable?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
         application.registerForRemoteNotifications()
+        
+        subscription = NotificationCenter.default.publisher(for: .CKAccountChanged)
+            .sink { _ in
+                // e.g. the user was not signed in to iCloud and is now signed into iCloud
+                
+                // TODO: detect if the user switched the iCloud Account, in this case delete the local data first
+                
+                os_log("CKAccountChanged")
+                WorkoutDataStorage.shared.cloudKitten.pull(from: .private)
+                WorkoutDataStorage.shared.cloudKitten.pull(from: .shared)
+                
+                WorkoutDataStorage.shared.cloudKitten.push(to: .private)
+            }
+        
         return true
     }
 
