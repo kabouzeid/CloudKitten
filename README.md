@@ -1,7 +1,5 @@
 # CloudKitten
 
-## Integrating
-
 CloudKitten is a Swift package, to use it in your project, add this to your `Package.swift` file:
 
 ```swift
@@ -14,17 +12,18 @@ let package = Package(
 )
 ```
 
-## Syncing NSManagedObjects
+## Core Data
 
 Add `SyncableObject` conformance to all `NSManagedObject` subclasses you wish to sync.
-Conforming to `RecordIDProperties`, `SystemFieldsProperty` and `ModificationTimeFieldKey` provides you with default implementations for most of the requirements in `SyncableObject`. In this case you need to add the following 5 properties to your Core Data entity.
+Conforming to `RecordIDProperties`, `SystemFieldsProperty` and `ModificationTimeFieldKey` provides you with default implementations for most of the requirements in `SyncableObject`. In this case you need to the following attributes to your Core Data entity.
 
-| `ck_databaseScope` | Integer 16  |
-| `ck_recordName`    | String      |
-| `ck_zoneName`      | String      |
-| `ck_ownerName`     | String      |
-| `ck_systemFields`  | Binary Data |
-
+| Attribute Name     | Attribute Type |
+|--------------------|----------------|
+| `ck_databaseScope` | Integer 16     |
+| `ck_recordName`    | String         |
+| `ck_zoneName`      | String         |
+| `ck_ownerName`     | String         |
+| `ck_systemFields`  | Binary Data    |
 
 ```swift
 class Foo: NSManagedObject {
@@ -124,7 +123,7 @@ cloudKitten.push(to: .private)
 cloudKitten.push(to: .shared)
 ```
 
-### Subscriptions
+### Subscribing to changes
 ```swift
 // subscribe to database notifications (CloudKitten only performs those once)
 cloudKitten.subscribe(to: .private)
