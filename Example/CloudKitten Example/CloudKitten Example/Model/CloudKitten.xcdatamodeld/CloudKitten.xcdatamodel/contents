@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="16119" systemVersion="19E266" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="17162" systemVersion="19E266" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
     <entity name="Workout" representedClassName=".Workout" syncable="YES" codeGenerationType="category">
-        <attribute name="ck_databaseScope" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES" preserveAfterDeletion="YES"/>
+        <attribute name="ck_databaseScope" optional="YES" attributeType="Integer 16" usesScalarValueType="YES" preserveAfterDeletion="YES"/>
         <attribute name="ck_ownerName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
         <attribute name="ck_recordName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
         <attribute name="ck_systemFields" optional="YES" attributeType="Binary"/>
@@ -11,7 +11,7 @@
         <relationship name="workoutExercises" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="WorkoutExercise" inverseName="workout" inverseEntity="WorkoutExercise"/>
     </entity>
     <entity name="WorkoutExercise" representedClassName=".WorkoutExercise" syncable="YES" codeGenerationType="category">
-        <attribute name="ck_databaseScope" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES" preserveAfterDeletion="YES"/>
+        <attribute name="ck_databaseScope" optional="YES" attributeType="Integer 16" usesScalarValueType="YES" preserveAfterDeletion="YES"/>
         <attribute name="ck_ownerName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
         <attribute name="ck_recordName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
         <attribute name="ck_systemFields" optional="YES" attributeType="Binary"/>
