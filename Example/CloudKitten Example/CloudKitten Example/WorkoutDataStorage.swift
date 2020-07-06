@@ -45,12 +45,12 @@ public class WorkoutDataStorage {
             }
         })
         
-        let syncSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("CloudMagic")
+        let cloudKittenStorageURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("CloudMagic")
         cloudKitten = CloudKitten(
             container: CKContainer(identifier: "iCloud.com.kabouzeid.CloudMagic"),
             persistentContainer: persistentContainer,
             syncObjects: [Workout.self, WorkoutExercise.self],
-            storage: try! FileStorageProvider(baseURL: syncSupportURL)
+            storage: try! FileStorageProvider(baseURL: cloudKittenStorageURL)
         )
         
         cloudKitten.subscribe(to: .private)
