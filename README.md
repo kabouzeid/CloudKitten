@@ -2,6 +2,7 @@
 
 CloudKitten is a Swift package, to use it in your project, add this to your `Package.swift` file:
 
+> :warning: **This will only work as soon as the repo is public and a tag has been created.**
 ```swift
 let package = Package(
     ...
