@@ -18,13 +18,13 @@ let package = Package(
 Add `SyncableObject` conformance to all `NSManagedObject` subclasses you wish to sync.
 Conforming to `RecordIDProperties`, `SystemFieldsProperty` and `ModificationTimeFieldKey` provides you with default implementations for most of the requirements in `SyncableObject`. In this case you need to the following attributes to your Core Data entity.
 
-| Attribute Name     | Attribute Type |
-|--------------------|----------------|
-| `ck_databaseScope` | Integer 16     |
-| `ck_recordName`    | String         |
-| `ck_zoneName`      | String         |
-| `ck_ownerName`     | String         |
-| `ck_systemFields`  | Binary Data    |
+| Attribute Name     | Attribute Type | Preserve After Deletion |
+|--------------------|----------------|-------------------------|
+| `ck_databaseScope` | Integer 16     | Yes                     |
+| `ck_recordName`    | String         | Yes                     |
+| `ck_zoneName`      | String         | Yes                     |
+| `ck_ownerName`     | String         | Yes                     |
+| `ck_systemFields`  | Binary Data    | No                      |
 
 ```swift
 class Foo: NSManagedObject {

@@ -6,7 +6,7 @@
         <attribute name="ck_recordName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
         <attribute name="ck_systemFields" optional="YES" attributeType="Binary"/>
         <attribute name="ck_zoneName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO" preserveAfterDeletion="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="start" attributeType="Date" usesScalarValueType="NO"/>
         <relationship name="workoutExercises" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="WorkoutExercise" inverseName="workout" inverseEntity="WorkoutExercise"/>
     </entity>
@@ -16,7 +16,7 @@
         <attribute name="ck_recordName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
         <attribute name="ck_systemFields" optional="YES" attributeType="Binary"/>
         <attribute name="ck_zoneName" optional="YES" attributeType="String" preserveAfterDeletion="YES"/>
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO" preserveAfterDeletion="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="orderIndex" attributeType="Integer 64" usesScalarValueType="YES"/>
         <relationship name="workout" maxCount="1" deletionRule="Nullify" destinationEntity="Workout" inverseName="workoutExercises" inverseEntity="Workout"/>
     </entity>
